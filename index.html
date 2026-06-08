@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <title>足球战术板 · Tactics Board</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <style>
+    :root{
+      --bg:#1c2128; --toolbar-bg:#262d36; --toolbar-border:#39414c;
+      --btn-bg:#313a45; --btn-active:#2e7d32; --btn-text:#e6e9ee;
+      --accent:#4caf50; --home:#2962ff; --away:#d50000; --danger:#c62828;
+    }
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--btn-text);
+      font-family:-apple-system,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+      -webkit-user-select:none;user-select:none;touch-action:manipulation}
+    #app{display:flex;flex-direction:column;height:100%}
+
+    /* 工具栏 */
+    #toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 10px;
+      background:var(--toolbar-bg);border-bottom:1px solid var(--toolbar-border);
+      padding-top:max(8px,env(safe-area-inset-top))}
+    .tb-group{display:flex;align-items:center;gap:4px;padding-right:10px;border-right:1px solid var(--toolbar-border)}
+    .tb-group:last-child{border-right:none}
+    .tb-group.spacer{margin-left:auto}
+    .tb-label{font-size:12px;opacity:.7;margin-right:2px}
+    .tb-label.home-dot::before,.tb-label.away-dot::before{content:"";display:inline-block;width:9px;height:9px;
+      border-radius:50%;margin-right:4px;vertical-align:middle}
+    .tb-label.home-dot::before{background:var(--home)}
+    .tb-label.away-dot::before{background:var(--away)}
+    .tb-btn{appearance:none;border:1px solid var(--toolbar-border);background:var(--btn-bg);color:var(--btn-text);
+      font-size:14px;padding:7px 11px;border-radius:8px;cursor:pointer;line-height:1;min-height:36px}
+    .tb-btn.small{padding:6px 8px;font-size:12px;min-height:32px}
+    .tb-btn:hover{background:#3a444f}
+    .tb-btn.active{background:var(--btn-active);border-color:var(--accent)}
+    .tb-btn.primary{background:var(--btn-active);border-color:var(--accent)}
+    .tb-btn.danger{background:var(--danger);border-color:#b71c1c}
+    .tb-select{background:var(--btn-bg);color:var(--btn-text);border:1px solid var(--toolbar-border);
+      border-radius:8px;padding:7px 8px;font-size:14px;min-height:36px;max-width:150px}
+    .tb-select.sm{max-width:96px;font-size:12px}
+    .tb-check{font-size:13px;display:flex;align-items:center;gap:4px}
+    .color-swatches{display:inline-flex;gap:4px;align-items:center}
+    .swatch{width:22px;height:22px;border-radius:50%;border:2px solid transparent;cursor:pointer}
+    .swatch.active{border-color:#fff;box-shadow:0 0 0 1px #000}
+    #draw-tools.disabled{opacity:.35;pointer-events:none}
+
+    /* 画布 */
+    #board-wrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:8px}
+    #board{width:100%;height:100%;touch-action:none;display:block}
+
+    .piece{cursor:grab}
+    .piece.dragging{cursor:grabbing}
+    .piece circle{stroke-width:.4}
+    .piece text{pointer-events:none;font-weight:700}
+    .piece .num{font-weight:800}
+    .piece .name{font-weight:600;paint-order:stroke;stroke:rgba(0,0,0,.6);stroke-width:.5px;fill:#fff}
+    .draw-line{fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+    /* 弹窗 */
+    .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:100}
+    .modal.hidden{display:none}
+    .modal-card{background:var(--toolbar-bg);border:1px solid var(--toolbar-border);border-radius:14px;
+      padding:20px;width:min(560px,92vw);max-height:90vh;overflow:auto}
+    .modal-card h2{margin:0 0 14px;font-size:18px}
+    .field-row{display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+    .field-row label{flex:1;display:flex;flex-direction:column;gap:4px;font-size:13px;min-width:140px}
+    .field-row input[type=text]{background:var(--btn-bg);color:var(--btn-text);border:1px solid var(--toolbar-border);
+      border-radius:8px;padding:8px}
+    .field-row input[type=color]{width:100%;height:38px;border:none;border-radius:8px;background:none}
+    .modal-card textarea{width:100%;background:var(--btn-bg);color:var(--btn-text);border:1px solid var(--toolbar-border);
+      border-radius:8px;padding:8px;font-family:ui-monospace,Menlo,monospace;font-size:13px;resize:vertical}
+    .hint{font-size:12px;opacity:.7;margin:6px 0}
+    .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:14px}
+
+    /* 名单面板 */
+    #roster-modal .modal-card{width:min(780px,95vw)}
+    .rost-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+    .rost-head h2{margin:0}
+    .rost-sec-title{font-size:14px;font-weight:700;margin:14px 0 8px;opacity:.9}
+    .rost-count{font-size:12px;opacity:.7;font-weight:400}
+    .xi-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px}
+    .xi-row{display:flex;align-items:center;gap:8px}
+    .xi-row .role{width:30px;font-size:12px;opacity:.7;text-align:center;
+      background:#1f2730;border-radius:6px;padding:3px 0}
+    .xi-row select{flex:1;background:var(--btn-bg);color:var(--btn-text);border:1px solid var(--toolbar-border);
+      border-radius:7px;padding:6px;font-size:13px;min-width:0}
+    .edit-row{display:grid;grid-template-columns:26px 52px 1fr 1fr;gap:8px;align-items:center;margin-bottom:5px}
+    .edit-row .num{font-size:12px;opacity:.6;text-align:right}
+    .edit-row select,.edit-row input{background:var(--btn-bg);color:var(--btn-text);border:1px solid var(--toolbar-border);
+      border-radius:7px;padding:6px;font-size:13px;min-width:0;width:100%}
+    .edit-row.onfield .num{color:var(--accent);font-weight:700;opacity:1}
+    details.rost-edit summary{cursor:pointer;font-size:14px;font-weight:700;margin:16px 0 8px;opacity:.9}
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header id="toolbar">
+      <div class="tb-group">
+        <span class="tb-label">场地</span>
+        <button class="tb-btn active" data-pitch="full">全场</button>
+        <button class="tb-btn" data-pitch="half">半场</button>
+        <button class="tb-btn small" id="half-flip" title="半场反转进攻方向">⇅ 反转</button>
+      </div>
+      <div class="tb-group">
+        <span class="tb-label">模式</span>
+        <button class="tb-btn active" data-mode="move" title="移动棋子">✋ 移动</button>
+        <button class="tb-btn" data-mode="draw" title="画线">✏️ 画线</button>
+        <button class="tb-btn" data-mode="card" title="点球员记黄/红牌">🟨 记牌</button>
+      </div>
+      <div class="tb-group disabled" id="draw-tools">
+        <button class="tb-btn active" data-tool="freehand">手绘</button>
+        <button class="tb-btn" data-tool="line">直线</button>
+        <button class="tb-btn" data-tool="arrow">箭头</button>
+        <button class="tb-btn" data-tool="eraser">橡皮擦</button>
+        <label class="tb-check"><input type="checkbox" id="dashed-toggle" /> 虚线</label>
+        <span class="color-swatches" id="line-colors"></span>
+        <button class="tb-btn" id="undo-line" title="撤销">↶</button>
+        <button class="tb-btn danger" id="clear-lines" title="清空所有线">清空</button>
+      </div>
+      <div class="tb-group">
+        <span class="tb-label">名称</span>
+        <button class="tb-btn" data-lang="number">号码</button>
+        <button class="tb-btn active" data-lang="cn">中文</button>
+        <button class="tb-btn" data-lang="en">EN</button>
+      </div>
+      <div class="tb-group spacer">
+        <span class="tb-label home-dot">主队</span>
+        <select id="home-team" class="tb-select"></select>
+        <button class="tb-btn small" id="home-kit" data-kit="home">主场</button>
+        <button class="tb-btn small" data-roster="home" title="名单/首发">名单</button>
+        <button class="tb-btn small active" id="home-eye" data-eye="home" title="显示/隐藏主队">👁</button>
+      </div>
+      <div class="tb-group">
+        <span class="tb-label away-dot">客队</span>
+        <select id="away-team" class="tb-select"></select>
+        <button class="tb-btn small" id="away-kit" data-kit="home">主场</button>
+        <button class="tb-btn small" data-roster="away" title="名单/首发">名单</button>
+        <button class="tb-btn small active" id="away-eye" data-eye="away" title="显示/隐藏客队">👁</button>
+      </div>
+      <div class="tb-group">
+        <span class="tb-label">阵型</span>
+        <select id="home-formation" class="tb-select sm" title="主队阵型"></select>
+        <select id="away-formation" class="tb-select sm" title="客队阵型"></select>
+      </div>
+      <div class="tb-group">
+        <button class="tb-btn" id="reset-board" title="按阵型重新摆位">重置棋子</button>
+        <button class="tb-btn" id="add-team" title="自定义球队">+ 自定义队</button>
+        <button class="tb-btn" id="toggle-ball" title="放置/移除足球">⚽ 球</button>
+      </div>
+    </header>
+
+    <main id="board-wrap">
+      <svg id="board" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+        <defs id="board-defs"></defs>
+        <g id="pitch-layer"></g>
+        <g id="lines-layer"></g>
+        <g id="pieces-layer"></g>
+      </svg>
+    </main>
+  </div>
+
+  <!-- 自定义球队 -->
+  <div id="team-modal" class="modal hidden">
+    <div class="modal-card">
+      <h2>自定义球队</h2>
+      <div class="field-row">
+        <label>队名(中文)<input type="text" id="ct-name-cn" placeholder="例如：中国" /></label>
+        <label>队名(英文)<input type="text" id="ct-name-en" placeholder="e.g. China" /></label>
+      </div>
+      <div class="field-row">
+        <label>主场色<input type="color" id="ct-home" value="#d32f2f" /></label>
+        <label>客场色<input type="color" id="ct-away" value="#ffffff" /></label>
+      </div>
+      <p class="hint">球员每行一个，格式：<b>号码,中文名,英文名,位置</b>。位置可填 GK/DF/MF/FW，可留空。</p>
+      <textarea id="ct-players" rows="8" placeholder="1,张三,Zhang San,GK&#10;10,李四,Li Si,MF"></textarea>
+      <div class="modal-actions">
+        <button class="tb-btn" id="ct-cancel">取消</button>
+        <button class="tb-btn primary" id="ct-save">保存球队</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 名单 / 首发 -->
+  <div id="roster-modal" class="modal hidden">
+    <div class="modal-card">
+      <div class="rost-head">
+        <h2 id="rost-title">名单</h2>
+        <button class="tb-btn small" id="rost-close">关闭</button>
+      </div>
+      <div class="rost-sec-title">场上球员 <span class="rost-count">（每个位置可下拉替换为名单中任意球员）</span></div>
+      <div class="xi-grid" id="rost-xi"></div>
+      <details class="rost-edit">
+        <summary>编辑名单中英文名（点开）</summary>
+        <p class="hint">改动会即时生效并自动保存在本机。号码/位置也可改。</p>
+        <div id="rost-edit-list"></div>
+        <div class="modal-actions">
+          <button class="tb-btn danger" id="rost-reset-edits">恢复该队默认名单</button>
+        </div>
+      </details>
+    </div>
+  </div>
+
+<script>
+/* =========================================================================
+   足球战术板 — 单文件版
+   ========================================================================= */
+const SVGNS = "http://www.w3.org/2000/svg";
+function svgEl(tag, attrs){
+  const e = document.createElementNS(SVGNS, tag);
+  if (attrs) for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+/* ----------------------------- 阵型预设 -------------------------------- */
+/* 归一化坐标（本方半场）：x 0=本方球门线 1=中线；y 0..1 横向 */
+const Formations = {
+  "4-3-3":[
+    {role:"GK",x:.05,y:.5},
+    {role:"DF",x:.24,y:.15},{role:"DF",x:.24,y:.38},{role:"DF",x:.24,y:.62},{role:"DF",x:.24,y:.85},
+    {role:"MF",x:.52,y:.25},{role:"MF",x:.52,y:.5},{role:"MF",x:.52,y:.75},
+    {role:"FW",x:.85,y:.2},{role:"FW",x:.85,y:.5},{role:"FW",x:.85,y:.8},
+  ],
+  "4-4-2":[
+    {role:"GK",x:.05,y:.5},
+    {role:"DF",x:.24,y:.15},{role:"DF",x:.24,y:.38},{role:"DF",x:.24,y:.62},{role:"DF",x:.24,y:.85},
+    {role:"MF",x:.52,y:.15},{role:"MF",x:.52,y:.38},{role:"MF",x:.52,y:.62},{role:"MF",x:.52,y:.85},
+    {role:"FW",x:.85,y:.35},{role:"FW",x:.85,y:.65},
+  ],
+  "4-2-3-1":[
+    {role:"GK",x:.05,y:.5},
+    {role:"DF",x:.22,y:.15},{role:"DF",x:.22,y:.38},{role:"DF",x:.22,y:.62},{role:"DF",x:.22,y:.85},
+    {role:"MF",x:.42,y:.35},{role:"MF",x:.42,y:.65},
+    {role:"MF",x:.66,y:.2},{role:"MF",x:.66,y:.5},{role:"MF",x:.66,y:.8},
+    {role:"FW",x:.9,y:.5},
+  ],
+  "3-5-2":[
+    {role:"GK",x:.05,y:.5},
+    {role:"DF",x:.22,y:.25},{role:"DF",x:.22,y:.5},{role:"DF",x:.22,y:.75},
+    {role:"MF",x:.5,y:.12},{role:"MF",x:.5,y:.31},{role:"MF",x:.5,y:.5},{role:"MF",x:.5,y:.69},{role:"MF",x:.5,y:.88},
+    {role:"FW",x:.85,y:.35},{role:"FW",x:.85,y:.65},
+  ],
+  "5-3-2":[
+    {role:"GK",x:.05,y:.5},
+    {role:"DF",x:.2,y:.1},{role:"DF",x:.2,y:.3},{role:"DF",x:.2,y:.5},{role:"DF",x:.2,y:.7},{role:"DF",x:.2,y:.9},
+    {role:"MF",x:.5,y:.25},{role:"MF",x:.5,y:.5},{role:"MF",x:.5,y:.75},
+    {role:"FW",x:.82,y:.35},{role:"FW",x:.82,y:.65},
+  ],
+  "3-4-3":[
+    {role:"GK",x:.05,y:.5},
+    {role:"DF",x:.22,y:.25},{role:"DF",x:.22,y:.5},{role:"DF",x:.22,y:.75},
+    {role:"MF",x:.5,y:.15},{role:"MF",x:.5,y:.38},{role:"MF",x:.5,y:.62},{role:"MF",x:.5,y:.85},
+    {role:"FW",x:.82,y:.2},{role:"FW",x:.82,y:.5},{role:"FW",x:.82,y:.8},
+  ],
+};
+const FORMATION_NAMES = Object.keys(Formations);
+
+/* ----------------------------- 球队数据 -------------------------------- */
+/* 2026 世界杯官方 26 人大名单（号码/印名取自 FIFA 官方 Squad Lists）。
+   colors 为各队国家队传统主/客场主色。 */
+const P = (num,cn,en,pos)=>({num,cn,en,pos});
+const BUILTIN_TEAMS = {
+  ARG:{cn:"阿根廷",en:"Argentina",colors:{home:"#75AADB",away:"#0F1F3D"},players:[
+    P(1,"穆索","Musso","GK"),P(2,"巴莱尔迪","Balerdi","DF"),P(3,"塔利亚菲科","Tagliafico","DF"),
+    P(4,"蒙铁尔","Montiel","DF"),P(5,"帕雷德斯","Paredes","MF"),P(6,"利桑德罗·马丁内斯","Lisandro M.","DF"),
+    P(7,"德保罗","De Paul","MF"),P(8,"巴尔科","Barco","MF"),P(9,"胡利安·阿尔瓦雷斯","J. Álvarez","FW"),
+    P(10,"梅西","Messi","FW"),P(11,"洛塞尔索","Lo Celso","MF"),P(12,"鲁利","Rulli","GK"),
+    P(13,"罗梅罗","C. Romero","DF"),P(14,"帕拉西奥斯","Palacios","MF"),P(15,"尼科·冈萨雷斯","N. González","MF"),
+    P(16,"阿尔马达","Almada","FW"),P(17,"西蒙尼","Simeone","FW"),P(18,"尼科·帕斯","Nico Paz","FW"),
+    P(19,"奥塔门迪","Otamendi","DF"),P(20,"麦卡利斯特","Mac Allister","MF"),P(21,"何塞·洛佩斯","J. López","FW"),
+    P(22,"劳塔罗·马丁内斯","Lautaro","FW"),P(23,"E.马丁内斯","E. Martínez","GK"),P(24,"恩佐·费尔南德斯","E. Fernández","MF"),
+    P(25,"梅迪纳","Medina","DF"),P(26,"莫利纳","Molina","DF"),
+  ]},
+  BRA:{cn:"巴西",en:"Brazil",colors:{home:"#FFDF00",away:"#0033A0"},players:[
+    P(1,"阿利松","Alisson","GK"),P(2,"韦斯利","Wesley","DF"),P(3,"加布里埃尔","Gabriel","DF"),
+    P(4,"马尔基尼奥斯","Marquinhos","DF"),P(5,"卡塞米罗","Casemiro","MF"),P(6,"阿莱士·桑德罗","Alex Sandro","DF"),
+    P(7,"维尼修斯","Vini Jr.","FW"),P(8,"布鲁诺·吉马良斯","Bruno G.","MF"),P(9,"库尼亚","Cunha","FW"),
+    P(10,"内马尔","Neymar Jr","FW"),P(11,"拉菲尼亚","Raphinha","FW"),P(12,"韦弗顿","Weverton","GK"),
+    P(13,"达尼洛","Danilo","DF"),P(14,"布雷默","Bremer","DF"),P(15,"莱奥·佩雷拉","Léo Pereira","DF"),
+    P(16,"道格拉斯·桑托斯","Douglas S.","DF"),P(17,"法比尼奥","Fabinho","MF"),P(18,"达尼洛(诺丁汉)","Danilo S.","MF"),
+    P(19,"恩德里克","Endrick","FW"),P(20,"帕奎塔","L. Paquetá","MF"),P(21,"路易斯·恩里克","L. Henrique","FW"),
+    P(22,"马丁内利","Martinelli","FW"),P(23,"埃德森","Ederson","GK"),P(24,"伊巴涅斯","Ibañez","DF"),
+    P(25,"伊戈尔·蒂亚戈","Thiago","FW"),P(26,"拉扬","Rayan","FW"),
+  ]},
+  ENG:{cn:"英格兰",en:"England",colors:{home:"#ffffff",away:"#C8102E"},players:[
+    P(1,"皮克福德","Pickford","GK"),P(2,"孔萨","Konsa","DF"),P(3,"奥赖利","O'Reilly","DF"),
+    P(4,"赖斯","Rice","MF"),P(5,"斯通斯","Stones","DF"),P(6,"古希","Guéhi","DF"),
+    P(7,"萨卡","Saka","FW"),P(8,"埃利奥特·安德森","E. Anderson","MF"),P(9,"凯恩","Kane","FW"),
+    P(10,"贝林厄姆","Bellingham","MF"),P(11,"拉什福德","Rashford","FW"),P(12,"利夫拉门托","Livramento","DF"),
+    P(13,"迪安·亨德森","D. Henderson","GK"),P(14,"乔丹·亨德森","J. Henderson","MF"),P(15,"伯恩","Burn","DF"),
+    P(16,"迈努","Mainoo","MF"),P(17,"罗杰斯","Rogers","MF"),P(18,"戈登","Gordon","FW"),
+    P(19,"沃特金斯","Watkins","FW"),P(20,"马杜埃凯","Madueke","FW"),P(21,"埃泽","Eze","MF"),
+    P(22,"托尼","Toney","FW"),P(23,"特拉福德","Trafford","GK"),P(24,"里斯·詹姆斯","R. James","DF"),
+    P(25,"斯彭斯","Spence","DF"),P(26,"匡萨","Quansah","DF"),
+  ]},
+  FRA:{cn:"法国",en:"France",colors:{home:"#002654",away:"#ffffff"},players:[
+    P(1,"桑巴","Samba","GK"),P(2,"古斯托","Gusto","DF"),P(3,"迪涅","Digne","DF"),
+    P(4,"于帕梅卡诺","Upamecano","DF"),P(5,"孔德","Koundé","DF"),P(6,"马努·科内","Koné","MF"),
+    P(7,"登贝莱","Dembélé","FW"),P(8,"琼阿梅尼","Tchouaméni","MF"),P(9,"图拉姆","Thuram","FW"),
+    P(10,"姆巴佩","Mbappé","FW"),P(11,"奥利斯","Olise","FW"),P(12,"巴尔科拉","Barcola","FW"),
+    P(13,"坎特","Kanté","MF"),P(14,"拉比奥","Rabiot","MF"),P(15,"科纳特","Konaté","DF"),
+    P(16,"迈尼昂","Maignan","GK"),P(17,"萨利巴","Saliba","DF"),P(18,"扎伊尔-埃梅里","Zaïre-Emery","MF"),
+    P(19,"特奥·埃尔南德斯","T. Hernández","DF"),P(20,"多埃","Doué","FW"),P(21,"卢卡斯·埃尔南德斯","L. Hernández","DF"),
+    P(22,"马特塔","Mateta","FW"),P(23,"里塞","Risser","GK"),P(24,"谢尔基","Cherki","MF"),
+    P(25,"阿克利乌什","Akliouche","MF"),P(26,"拉克鲁瓦","Lacroix","DF"),
+  ]},
+  POR:{cn:"葡萄牙",en:"Portugal",colors:{home:"#C8102E",away:"#005A30"},players:[
+    P(1,"迪奥戈·科斯塔","Diogo Costa","GK"),P(2,"内尔森·塞梅多","N. Semedo","DF"),P(3,"鲁本·迪亚斯","Rúben Dias","DF"),
+    P(4,"托马斯·阿劳霍","Tomás A.","DF"),P(5,"达洛特","Dalot","DF"),P(6,"马特乌斯·努内斯","Matheus N.","MF"),
+    P(7,"C罗","Ronaldo","FW"),P(8,"B.费尔南德斯","B. Fernandes","MF"),P(9,"贡萨洛·拉莫斯","G. Ramos","FW"),
+    P(10,"B.席尔瓦","Bernardo","MF"),P(11,"若昂·费利克斯","João Félix","FW"),P(12,"若泽·萨","José Sá","GK"),
+    P(13,"雷纳托·维加","Renato Veiga","DF"),P(14,"贡萨洛·伊纳西奥","G. Inácio","DF"),P(15,"若昂·内维斯","João Neves","MF"),
+    P(16,"特林康","Trincão","FW"),P(17,"拉斐尔·莱昂","Rafa Leão","FW"),P(18,"内托","Neto","FW"),
+    P(19,"贡萨洛·格德斯","G. Guedes","FW"),P(20,"坎塞洛","João Cancelo","DF"),P(21,"鲁本·内维斯","R. Neves","MF"),
+    P(22,"鲁伊·席尔瓦","Rui Silva","GK"),P(23,"维蒂尼亚","Vitinha","MF"),P(24,"萨穆","Samú","DF"),
+    P(25,"努诺·门德斯","N. Mendes","DF"),P(26,"弗朗西斯科·孔塞桑","F. Conceição","FW"),
+  ]},
+  ESP:{cn:"西班牙",en:"Spain",colors:{home:"#C60B1E",away:"#1b2a4a"},players:[
+    P(1,"拉亚","Raya","GK"),P(2,"马克·普比尔","Marc Pubill","DF"),P(3,"格里马尔多","Grimaldo","DF"),
+    P(4,"埃里克·加西亚","Eric","DF"),P(5,"马科斯·略伦特","M. Llorente","DF"),P(6,"梅里诺","Merino","MF"),
+    P(7,"费兰·托雷斯","Ferran","FW"),P(8,"法比安","Fabián","MF"),P(9,"加维","Gavi","MF"),
+    P(10,"达尼·奥尔莫","Olmo","FW"),P(11,"耶雷米·皮诺","Yeremy","FW"),P(12,"佩德罗·波罗","Pedro Porro","DF"),
+    P(13,"琼·加西亚","Joan García","GK"),P(14,"拉波尔特","Laporte","DF"),P(15,"亚历克斯·巴埃纳","Álex B.","MF"),
+    P(16,"罗德里","Rodri","MF"),P(17,"尼科·威廉姆斯","Williams Jr","FW"),P(18,"苏比门迪","Zubimendi","MF"),
+    P(19,"拉明·亚马尔","Lamine Yamal","FW"),P(20,"佩德里","Pedri","MF"),P(21,"奥亚萨瓦尔","Oyarzabal","FW"),
+    P(22,"库巴尔西","Cubarsí","DF"),P(23,"乌奈·西蒙","Unai Simón","GK"),P(24,"库库雷利亚","Cucurella","DF"),
+    P(25,"维克托","Víctor","FW"),P(26,"博尔哈·伊格莱西亚斯","B. Iglesias","FW"),
+  ]},
+};
+
+/* 自定义球队 + 名单编辑（localStorage 持久化） */
+function lsGet(k,def){ try{ return JSON.parse(localStorage.getItem(k)||def); }catch(e){ return JSON.parse(def); } }
+function lsSet(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+let CUSTOM_TEAMS = lsGet("tb_custom_teams","{}");
+let EDITS = lsGet("tb_team_edits","{}");          // {teamId:{num:{cn,en,pos}}}
+function saveCustom(){ lsSet("tb_custom_teams", CUSTOM_TEAMS); }
+function saveEdits(){ lsSet("tb_team_edits", EDITS); }
+function rawTeams(){ return Object.assign({}, BUILTIN_TEAMS, CUSTOM_TEAMS); }
+
+/* 应用名单编辑后的球队数据 */
+function getTeam(teamId){
+  const t = rawTeams()[teamId];
+  if(!t) return null;
+  const ed = EDITS[teamId] || {};
+  const players = t.players.map(p=>{
+    const o = ed[p.num];
+    return o ? {num:p.num, cn:o.cn??p.cn, en:o.en??p.en, pos:o.pos??p.pos} : p;
+  });
+  return {cn:t.cn, en:t.en, colors:t.colors, players};
+}
+
+/* ----------------------------- 球场绘制 -------------------------------- */
+/* 全场坐标 105×68；半场为独立的横向画法（球门在上方），铺满画布 */
+const FULL = {W:105, H:68, M:5};
+const HALF = {PW:68, PD:52.5, M:4};   // PW=横向(球门宽方向) PD=纵向(进攻纵深)
+const VIEWBOX = {
+  full: `${-FULL.M} ${-FULL.M} ${FULL.W+2*FULL.M} ${FULL.H+2*FULL.M}`,
+  half: `${-HALF.M} ${-HALF.M} ${HALF.PW+2*HALF.M} ${HALF.PD+2*HALF.M}`,
+};
+function viewW(){ return state.pitch==="full" ? FULL.W+2*FULL.M : HALF.PW+2*HALF.M; }
+
+const Pitch = (() => {
+  const lineAttr = {fill:"none",stroke:"rgba(255,255,255,0.9)","stroke-width":0.25};
+  const ln=(e)=>{for(const k in lineAttr)e.setAttribute(k,lineAttr[k]);return e;};
+  const dot=(cx,cy)=>svgEl("circle",{cx,cy,r:0.4,fill:"rgba(255,255,255,0.9)"});
+
+  function full(layer){
+    const {W,H,M}=FULL;
+    layer.appendChild(svgEl("rect",{x:-M,y:-M,width:W+2*M,height:H+2*M,fill:"#2f7d3a"}));
+    const stripes=14, sw=W/stripes;
+    for(let i=0;i<stripes;i++)
+      layer.appendChild(svgEl("rect",{x:i*sw,y:0,width:sw,height:H,fill:i%2===0?"#379247":"#329043"}));
+    layer.appendChild(ln(svgEl("rect",{x:0,y:0,width:W,height:H})));
+    layer.appendChild(ln(svgEl("line",{x1:W/2,y1:0,x2:W/2,y2:H})));
+    layer.appendChild(ln(svgEl("circle",{cx:W/2,cy:H/2,r:9.15})));
+    layer.appendChild(dot(W/2,H/2));
+    const penD=16.5,penW=40.32,goalD=5.5,goalW=18.32,pen=11;
+    const penY=(H-penW)/2, goalY=(H-goalW)/2;
+    layer.appendChild(ln(svgEl("rect",{x:0,y:penY,width:penD,height:penW})));
+    layer.appendChild(ln(svgEl("rect",{x:0,y:goalY,width:goalD,height:goalW})));
+    layer.appendChild(dot(pen,H/2));
+    const ldy=Math.sqrt(9.15*9.15-(penD-pen)*(penD-pen));
+    layer.appendChild(ln(svgEl("path",{d:`M ${penD} ${H/2-ldy} A 9.15 9.15 0 0 1 ${penD} ${H/2+ldy}`})));
+    layer.appendChild(ln(svgEl("rect",{x:W-penD,y:penY,width:penD,height:penW})));
+    layer.appendChild(ln(svgEl("rect",{x:W-goalD,y:goalY,width:goalD,height:goalW})));
+    layer.appendChild(dot(W-pen,H/2));
+    layer.appendChild(ln(svgEl("path",{d:`M ${W-penD} ${H/2-ldy} A 9.15 9.15 0 0 0 ${W-penD} ${H/2+ldy}`})));
+    layer.appendChild(ln(svgEl("rect",{x:-2,y:goalY,width:2,height:goalW})));
+    layer.appendChild(ln(svgEl("rect",{x:W,y:goalY,width:2,height:goalW})));
+    const r=1;
+    layer.appendChild(ln(svgEl("path",{d:`M ${r} 0 A ${r} ${r} 0 0 1 0 ${r}`})));
+    layer.appendChild(ln(svgEl("path",{d:`M 0 ${H-r} A ${r} ${r} 0 0 1 ${r} ${H}`})));
+    layer.appendChild(ln(svgEl("path",{d:`M ${W-r} ${H} A ${r} ${r} 0 0 1 ${W} ${H-r}`})));
+    layer.appendChild(ln(svgEl("path",{d:`M ${W} ${r} A ${r} ${r} 0 0 1 ${W-r} 0`})));
+  }
+
+  function half(layer){
+    const {PW,PD,M}=HALF;          // 球门线在 y=0(上)，中线在 y=PD(下)
+    layer.appendChild(svgEl("rect",{x:-M,y:-M,width:PW+2*M,height:PD+2*M,fill:"#2f7d3a"}));
+    const stripes=8, sh=PD/stripes;
+    for(let i=0;i<stripes;i++)
+      layer.appendChild(svgEl("rect",{x:0,y:i*sh,width:PW,height:sh,fill:i%2===0?"#379247":"#329043"}));
+    layer.appendChild(ln(svgEl("rect",{x:0,y:0,width:PW,height:PD})));   // 外框(下边=中线)
+    const cx=PW/2, penD=16.5,penW=40.32,goalD=5.5,goalW=18.32,pen=11;
+    layer.appendChild(ln(svgEl("rect",{x:cx-penW/2,y:0,width:penW,height:penD})));   // 大禁区
+    layer.appendChild(ln(svgEl("rect",{x:cx-goalW/2,y:0,width:goalW,height:goalD}))); // 小禁区
+    layer.appendChild(dot(cx,pen));                                                  // 点球点
+    const dx=Math.sqrt(9.15*9.15-(penD-pen)*(penD-pen));
+    layer.appendChild(ln(svgEl("path",{d:`M ${cx-dx} ${penD} A 9.15 9.15 0 0 0 ${cx+dx} ${penD}`}))); // 弧顶
+    layer.appendChild(ln(svgEl("rect",{x:cx-3.66,y:-1.5,width:7.32,height:1.5})));    // 球门
+    // 中圈(露出上半圆) + 中点
+    layer.appendChild(ln(svgEl("path",{d:`M ${cx-9.15} ${PD} A 9.15 9.15 0 0 1 ${cx+9.15} ${PD}`})));
+    layer.appendChild(dot(cx,PD));
+  }
+
+  function render(svg, mode){
+    svg.setAttribute("viewBox", VIEWBOX[mode]||VIEWBOX.full);
+    const layer=svg.querySelector("#pitch-layer");
+    layer.replaceChildren();
+    (mode==="half"?half:full)(layer);
+  }
+  return {render};
+})();
+
+/* ----------------------------- 工具函数 -------------------------------- */
+function textColorOn(hex){
+  const c=hex.replace("#","");
+  const r=parseInt(c.substr(0,2),16),g=parseInt(c.substr(2,2),16),b=parseInt(c.substr(4,2),16);
+  return (0.299*r+0.587*g+0.114*b)>150 ? "#111" : "#fff";
+}
+const svg = document.getElementById("board");
+function svgPoint(clientX, clientY){
+  const pt = svg.createSVGPoint();
+  pt.x=clientX; pt.y=clientY;
+  return pt.matrixTransform(svg.getScreenCTM().inverse());
+}
+
+/* ----------------------------- 全局状态 -------------------------------- */
+const state = {
+  pitch:"full", mode:"move", tool:"freehand", dashed:false,
+  color:"#ffeb3b", lang:"cn", ball:false,
+  visible:{home:true, away:true},
+  halfFlip:false,                              // 半场反转：true 则客队进攻
+  cards:{home:{}, away:{}},                    // 红黄牌：{num:1=黄,2=红}
+  home:{teamId:"ARG", kit:"home", formation:"4-3-3"},
+  away:{teamId:"FRA", kit:"home", formation:"4-3-3"},
+  lineup:{home:[], away:[]},                  // 每个 slot 上场球员的号码
+  pos:{                                       // 按场地模式分别存棋子坐标
+    full:{home:[],away:[],ball:{x:FULL.W/2,y:FULL.H/2}},
+    half:{home:[],away:[],ball:{x:HALF.PW/2,y:HALF.PD*0.55}},
+  },
+};
+
+/* 默认首发：按位置+号码从大名单挑 11 人，返回号码数组 */
+function pickLineup(team, formationName, keepSet){
+  const slots = Formations[formationName];
+  const pool = keepSet
+    ? keepSet.map(n=>team.players.find(p=>p.num===n)).filter(Boolean)
+    : team.players.slice();
+  const used=new Set(), nums=[];
+  for(const slot of slots){
+    let pl = pool.find(p=>!used.has(p.num)&&p.pos===slot.role) || pool.find(p=>!used.has(p.num));
+    if(pl){ used.add(pl.num); nums.push(pl.num); } else nums.push(null);
+  }
+  return nums;
+}
+
+/* 计算某一方各 slot 在指定模式下的球场坐标 */
+function layoutSide(side, mode){
+  const slots = Formations[state[side].formation];
+  const pos=[];
+  for(const s of slots){
+    let x,y;
+    if(mode==="full"){
+      const half=FULL.W/2;
+      if(side==="home"){ x=s.x*half;        y=s.y*FULL.H; }
+      else             { x=FULL.W-s.x*half; y=s.y*FULL.H; }
+    }else{
+      const {PW,PD}=HALF;                 // 球门在上方
+      const attacking = state.halfFlip ? "away" : "home";
+      if(side===attacking){ x=s.y*PW;     y=PD-s.x*PD*0.92; }   // 进攻方向上
+      else               { x=(1-s.y)*PW;  y=s.x*PD*0.5; }       // 防守方在上半
+    }
+    pos.push({x,y});
+  }
+  return pos;
+}
+
+/* 重新计算某一方两种模式的坐标（结构性变更时调用） */
+function recomputeSide(side){
+  state.pos.full[side] = layoutSide(side,"full");
+  state.pos.half[side] = layoutSide(side,"half");
+}
+function resetLineup(side){
+  const team = getTeam(state[side].teamId);
+  state.lineup[side] = pickLineup(team, state[side].formation);
+}
+
+/* ----------------------------- 棋子渲染 -------------------------------- */
+const piecesLayer = document.getElementById("pieces-layer");
+
+function pieceLabel(player){
+  if(state.lang==="number") return "";
+  if(state.lang==="en") return player.en||"";
+  return player.cn||"";
+}
+
+function renderPieces(){
+  piecesLayer.replaceChildren();
+  const mode = state.pitch;
+  const vw = viewW();
+  const R = vw*0.022, fNum = R*1.15, fName = R*0.82;
+  ["home","away"].forEach(side=>{
+    if(!state.visible[side]) return;
+    const cfg = state[side];
+    const team = getTeam(cfg.teamId);
+    if(!team) return;
+    const fill = team.colors[cfg.kit];
+    const txt = textColorOn(fill);
+    const positions = state.pos[mode][side];
+    state.lineup[side].forEach((num,i)=>{
+      const p = positions[i]; if(!p) return;
+      const player = team.players.find(pl=>pl.num===num) || {num:"",cn:"",en:""};
+      const card = state.cards[side][num]||0;
+      const g = svgEl("g",{class:"piece","data-side":side,"data-idx":i});
+      g.setAttribute("transform",`translate(${p.x} ${p.y})`);
+      g.appendChild(svgEl("circle",{r:R,fill:fill,stroke:"#ffffff",opacity:card===2?0.5:1}));
+      if(card) g.appendChild(svgEl("rect",{x:R*0.45,y:-R*1.25,width:R*0.78,height:R*1.12,rx:R*0.16,
+        fill:card===2?"#e53935":"#ffd400",stroke:"rgba(0,0,0,.6)","stroke-width":R*0.09}));
+      const t = svgEl("text",{class:"num",x:0,y:0,"text-anchor":"middle","dominant-baseline":"central","font-size":fNum,fill:txt});
+      t.textContent = player.num;
+      g.appendChild(t);
+      const label = pieceLabel(player);
+      if(label){
+        const nm = svgEl("text",{class:"name",x:0,y:R+fName*1.05,"text-anchor":"middle","dominant-baseline":"middle","font-size":fName});
+        nm.textContent = label;
+        g.appendChild(nm);
+      }
+      attachDrag(g, side, i);
+      piecesLayer.appendChild(g);
+    });
+  });
+  if(state.ball){
+    const b = state.pos[mode].ball;
+    const r = vw*0.014;
+    const g = svgEl("g",{class:"piece",id:"ball-piece"});
+    g.setAttribute("transform",`translate(${b.x} ${b.y})`);
+    g.appendChild(svgEl("circle",{r:r,fill:"#fff",stroke:"#111","stroke-width":r*0.18}));
+    g.appendChild(svgEl("path",{d:"M 0 -1 L 0.6 -0.33 L 0.37 0.6 L -0.37 0.6 L -0.6 -0.33 Z",fill:"#111",transform:`scale(${r*0.95})`}));
+    attachDrag(g,"ball",0);
+    piecesLayer.appendChild(g);
+  }
+}
+function restyle(){ renderPieces(); }
+
+/* 棋子拖拽 */
+function cycleCard(side, num){
+  const c = state.cards[side];
+  c[num] = ((c[num]||0)+1)%3;          // 无 → 黄 → 红 → 无
+  if(!c[num]) delete c[num];
+}
+function attachDrag(g, side, idx){
+  g.addEventListener("pointerdown",(e)=>{
+    if(state.mode==="card"){
+      if(side!=="ball"){ e.stopPropagation(); cycleCard(side, state.lineup[side][idx]); renderPieces(); }
+      return;
+    }
+    if(state.mode!=="move") return;
+    e.stopPropagation();
+    g.setPointerCapture(e.pointerId);
+    g.classList.add("dragging");
+    const mode = state.pitch;
+    const lim = state.pitch==="full" ? FULL : {W:HALF.PW,H:HALF.PD};
+    const Wd = state.pitch==="full"?FULL.W:HALF.PW, Hd = state.pitch==="full"?FULL.H:HALF.PD;
+    const move=(ev)=>{
+      const pt = svgPoint(ev.clientX, ev.clientY);
+      const x = Math.max(-1, Math.min(Wd+1, pt.x));
+      const y = Math.max(-1, Math.min(Hd+1, pt.y));
+      if(side==="ball") state.pos[mode].ball={x,y};
+      else state.pos[mode][side][idx]={x,y};
+      g.setAttribute("transform",`translate(${x} ${y})`);
+    };
+    const up=()=>{
+      g.classList.remove("dragging");
+      try{ g.releasePointerCapture(e.pointerId); }catch(_){}
+      g.removeEventListener("pointermove",move);
+      g.removeEventListener("pointerup",up);
+      g.removeEventListener("pointercancel",up);
+    };
+    g.addEventListener("pointermove",move);
+    g.addEventListener("pointerup",up);
+    g.addEventListener("pointercancel",up);
+  });
+}
+
+/* ----------------------------- 画线工具 -------------------------------- */
+const linesLayer = document.getElementById("lines-layer");
+let draw = null;
+function strokeAttrs(){
+  const w = viewW()*0.006;
+  const a = {class:"draw-line", stroke:state.color, "stroke-width":w};
+  if(state.dashed) a["stroke-dasharray"]=`${w*2.6} ${w*2.6}`;
+  return a;
+}
+function arrowHead(x1,y1,x2,y2){
+  const a=Math.atan2(y2-y1,x2-x1), h=viewW()*0.022, s=0.5;
+  return `M ${x2-h*Math.cos(a-s)} ${y2-h*Math.sin(a-s)} L ${x2} ${y2} L ${x2-h*Math.cos(a+s)} ${y2-h*Math.sin(a+s)}`;
+}
+function boardPointerDown(e){
+  if(state.mode!=="draw") return;
+  const pt = svgPoint(e.clientX, e.clientY);
+  if(state.tool==="eraser"){ eraseAt(pt.x,pt.y); draw={eraser:true}; svg.setPointerCapture(e.pointerId); return; }
+  svg.setPointerCapture(e.pointerId);
+  if(state.tool==="freehand"){
+    const path = svgEl("path", strokeAttrs());
+    path.setAttribute("d", `M ${pt.x} ${pt.y}`);
+    linesLayer.appendChild(path);
+    draw = {type:"freehand", el:path, d:`M ${pt.x} ${pt.y}`};
+  }else{
+    const g = svgEl("g",{class:"draw-shape"});
+    const main = svgEl("path", strokeAttrs());
+    g.appendChild(main);
+    let head=null;
+    if(state.tool==="arrow"){ head=svgEl("path",{class:"draw-line",stroke:state.color,"stroke-width":viewW()*0.006}); g.appendChild(head); }
+    linesLayer.appendChild(g);
+    draw = {type:state.tool, el:g, main, head, x0:pt.x, y0:pt.y};
+  }
+}
+function boardPointerMove(e){
+  if(!draw) return;
+  const pt = svgPoint(e.clientX, e.clientY);
+  if(draw.eraser){ eraseAt(pt.x,pt.y); return; }
+  if(draw.type==="freehand"){ draw.d+=` L ${pt.x} ${pt.y}`; draw.el.setAttribute("d",draw.d); }
+  else{
+    draw.main.setAttribute("d",`M ${draw.x0} ${draw.y0} L ${pt.x} ${pt.y}`);
+    if(draw.head) draw.head.setAttribute("d", arrowHead(draw.x0,draw.y0,pt.x,pt.y));
+  }
+}
+function boardPointerUp(e){
+  if(!draw) return;
+  if(!draw.eraser){
+    const bb = draw.el.getBBox && draw.el.getBBox();
+    if(bb && bb.width<0.4 && bb.height<0.4) draw.el.remove();
+  }
+  try{ svg.releasePointerCapture(e.pointerId); }catch(_){}
+  draw=null;
+}
+function eraseAt(x,y){
+  const tol=viewW()*0.02;
+  for(const el of Array.from(linesLayer.children)){
+    const targets = el.tagName==="g" ? Array.from(el.querySelectorAll("path")) : [el];
+    let hit=false;
+    for(const t of targets){
+      if(typeof t.isPointInStroke!=="function") continue;
+      const p=svg.createSVGPoint();
+      for(let dx=-tol;dx<=tol&&!hit;dx+=tol) for(let dy=-tol;dy<=tol&&!hit;dy+=tol){
+        p.x=x+dx; p.y=y+dy;
+        try{ if(t.isPointInStroke(p)) hit=true; }catch(_){}
+      }
+      if(hit) break;
+    }
+    if(hit) el.remove();
+  }
+}
+function undoLine(){ const l=linesLayer.lastElementChild; if(l) l.remove(); }
+function clearLines(){ linesLayer.replaceChildren(); }
+svg.addEventListener("pointerdown", boardPointerDown);
+svg.addEventListener("pointermove", boardPointerMove);
+svg.addEventListener("pointerup", boardPointerUp);
+svg.addEventListener("pointercancel", boardPointerUp);
+
+/* ----------------------------- 名单面板 -------------------------------- */
+let rosterSide = "home";
+const rosterModal = document.getElementById("roster-modal");
+function openRoster(side){
+  rosterSide = side;
+  const team = getTeam(state[side].teamId);
+  document.getElementById("rost-title").textContent =
+    (side==="home"?"主队名单 · ":"客队名单 · ") + team.cn + " / " + team.en;
+  buildRosterXI();
+  buildRosterEdit();
+  rosterModal.classList.remove("hidden");
+}
+function buildRosterXI(){
+  const side=rosterSide, team=getTeam(state[side].teamId);
+  const box=document.getElementById("rost-xi");
+  box.replaceChildren();
+  state.lineup[side].forEach((num,i)=>{
+    const row=document.createElement("div"); row.className="xi-row";
+    const sel=document.createElement("select");
+    team.players.forEach(p=>{
+      const o=document.createElement("option");
+      o.value=p.num; o.textContent=`${p.num}  ${p.cn}/${p.en}/${p.pos}`;   // 位置取自球员本身
+      if(p.num===num) o.selected=true;
+      sel.appendChild(o);
+    });
+    sel.addEventListener("change",()=>{
+      const pick=Number(sel.value);
+      const j=state.lineup[side].indexOf(pick);
+      if(j>=0 && j!==i) state.lineup[side][j]=num;   // 换位，避免重复
+      state.lineup[side][i]=pick;
+      buildRosterXI(); buildRosterEdit(); renderPieces();
+    });
+    row.appendChild(sel);
+    box.appendChild(row);
+  });
+}
+function buildRosterEdit(){
+  const side=rosterSide, teamId=state[side].teamId, team=getTeam(teamId);
+  const box=document.getElementById("rost-edit-list");
+  box.replaceChildren();
+  team.players.forEach(p=>{
+    const onField=state.lineup[side].includes(p.num);
+    const row=document.createElement("div"); row.className="edit-row"+(onField?" onfield":"");
+    const num=document.createElement("span"); num.className="num"; num.textContent="#"+p.num;
+    const pos=document.createElement("select");
+    ["GK","DF","MF","FW"].forEach(r=>{const o=document.createElement("option");o.value=r;o.textContent=r;if(r===p.pos)o.selected=true;pos.appendChild(o);});
+    const cn=document.createElement("input"); cn.type="text"; cn.value=p.cn; cn.placeholder="中文名";
+    const en=document.createElement("input"); en.type="text"; en.value=p.en; en.placeholder="English";
+    const apply=(field,val)=>{
+      EDITS[teamId]=EDITS[teamId]||{};
+      EDITS[teamId][p.num]=Object.assign({}, EDITS[teamId][p.num], {[field]:val});
+      saveEdits(); renderPieces();
+    };
+    cn.addEventListener("input",()=>apply("cn",cn.value));
+    en.addEventListener("input",()=>apply("en",en.value));
+    pos.addEventListener("change",()=>{ apply("pos",pos.value); });
+    row.append(num,pos,cn,en);
+    box.appendChild(row);
+  });
+}
+document.getElementById("rost-close").addEventListener("click",()=>rosterModal.classList.add("hidden"));
+document.getElementById("rost-reset-edits").addEventListener("click",()=>{
+  const teamId=state[rosterSide].teamId;
+  if(!confirm("恢复该队默认名单（清除你对名字/位置的修改）？")) return;
+  delete EDITS[teamId]; saveEdits();
+  openRoster(rosterSide); renderPieces();
+});
+
+/* ----------------------------- 界面装配 -------------------------------- */
+const LINE_COLORS = ["#ffeb3b","#ffffff","#ff5252","#40c4ff","#000000","#00e676"];
+function buildColorSwatches(){
+  const box=document.getElementById("line-colors"); box.replaceChildren();
+  LINE_COLORS.forEach(c=>{
+    const s=document.createElement("span");
+    s.className="swatch"+(c===state.color?" active":""); s.style.background=c;
+    s.addEventListener("click",()=>{ state.color=c;
+      box.querySelectorAll(".swatch").forEach(x=>x.classList.remove("active")); s.classList.add("active"); });
+    box.appendChild(s);
+  });
+}
+function populateTeamSelects(){
+  const teams=rawTeams();
+  ["home","away"].forEach(side=>{
+    const sel=document.getElementById(side+"-team"); const cur=state[side].teamId;
+    sel.replaceChildren();
+    Object.keys(teams).forEach(id=>{
+      const o=document.createElement("option"); o.value=id; o.textContent=teams[id].cn+" / "+teams[id].en; sel.appendChild(o);
+    });
+    sel.value=cur;
+  });
+}
+function populateFormationSelects(){
+  ["home","away"].forEach(side=>{
+    const sel=document.getElementById(side+"-formation"); sel.replaceChildren();
+    FORMATION_NAMES.forEach(n=>{const o=document.createElement("option");o.value=n;o.textContent=n;sel.appendChild(o);});
+    sel.value=state[side].formation;
+  });
+}
+
+function wire(){
+  document.querySelectorAll("[data-pitch]").forEach(b=>b.addEventListener("click",()=>{
+    state.pitch=b.dataset.pitch;
+    document.querySelectorAll("[data-pitch]").forEach(x=>x.classList.toggle("active",x===b));
+    Pitch.render(svg, state.pitch);
+    clearLines();                       // 两种场地坐标系不同，切换时清空画线
+    renderPieces();
+  }));
+  document.querySelectorAll("[data-mode]").forEach(b=>b.addEventListener("click",()=>{
+    state.mode=b.dataset.mode;
+    document.querySelectorAll("[data-mode]").forEach(x=>x.classList.toggle("active",x===b));
+    document.getElementById("draw-tools").classList.toggle("disabled", state.mode!=="draw");
+    piecesLayer.style.pointerEvents = state.mode==="draw" ? "none" : "auto";
+  }));
+  document.querySelectorAll("[data-tool]").forEach(b=>b.addEventListener("click",()=>{
+    state.tool=b.dataset.tool;
+    document.querySelectorAll("[data-tool]").forEach(x=>x.classList.toggle("active",x===b));
+  }));
+  document.getElementById("dashed-toggle").addEventListener("change",e=>state.dashed=e.target.checked);
+  document.getElementById("undo-line").addEventListener("click",undoLine);
+  document.getElementById("clear-lines").addEventListener("click",clearLines);
+  document.querySelectorAll("[data-lang]").forEach(b=>b.addEventListener("click",()=>{
+    state.lang=b.dataset.lang;
+    document.querySelectorAll("[data-lang]").forEach(x=>x.classList.toggle("active",x===b));
+    restyle();
+  }));
+  ["home","away"].forEach(side=>{
+    document.getElementById(side+"-team").addEventListener("change",e=>{
+      state[side].teamId=e.target.value; state[side].kit="home";
+      state.cards[side]={};
+      const kb=document.getElementById(side+"-kit"); kb.textContent="主场"; kb.dataset.kit="home";
+      resetLineup(side); recomputeSide(side); renderPieces();
+    });
+    document.getElementById(side+"-formation").addEventListener("change",e=>{
+      state[side].formation=e.target.value;
+      const team=getTeam(state[side].teamId);
+      state.lineup[side]=pickLineup(team, e.target.value, state.lineup[side].filter(Boolean)); // 保留同一批球员
+      recomputeSide(side); renderPieces();
+    });
+    document.getElementById(side+"-kit").addEventListener("click",e=>{
+      const next=state[side].kit==="home"?"away":"home";
+      state[side].kit=next; e.target.dataset.kit=next; e.target.textContent=next==="home"?"主场":"客场";
+      restyle();
+    });
+  });
+  document.querySelectorAll("[data-roster]").forEach(b=>b.addEventListener("click",()=>openRoster(b.dataset.roster)));
+  document.getElementById("half-flip").addEventListener("click",e=>{
+    state.halfFlip=!state.halfFlip;
+    e.target.classList.toggle("active",state.halfFlip);
+    recomputeSide("home"); recomputeSide("away");
+    if(state.pitch==="half") renderPieces();
+  });
+  document.querySelectorAll("[data-eye]").forEach(b=>b.addEventListener("click",()=>{
+    const side=b.dataset.eye; state.visible[side]=!state.visible[side];
+    b.classList.toggle("active",state.visible[side]); b.textContent=state.visible[side]?"👁":"🚫";
+    renderPieces();
+  }));
+  document.getElementById("reset-board").addEventListener("click",()=>{
+    ["home","away"].forEach(s=>{ resetLineup(s); recomputeSide(s); });
+    state.pos.full.ball={x:FULL.W/2,y:FULL.H/2};
+    state.pos.half.ball={x:HALF.PW/2,y:HALF.PD*0.55};
+    renderPieces();
+  });
+  document.getElementById("toggle-ball").addEventListener("click",e=>{
+    state.ball=!state.ball; e.target.classList.toggle("active",state.ball); renderPieces();
+  });
+  const modal=document.getElementById("team-modal");
+  document.getElementById("add-team").addEventListener("click",()=>modal.classList.remove("hidden"));
+  document.getElementById("ct-cancel").addEventListener("click",()=>modal.classList.add("hidden"));
+  document.getElementById("ct-save").addEventListener("click",saveCustomTeam);
+}
+
+function saveCustomTeam(){
+  const cn=document.getElementById("ct-name-cn").value.trim();
+  const en=document.getElementById("ct-name-en").value.trim();
+  if(!cn && !en){ alert("请填写队名"); return; }
+  const home=document.getElementById("ct-home").value, away=document.getElementById("ct-away").value;
+  const lines=document.getElementById("ct-players").value.split("\n").map(s=>s.trim()).filter(Boolean);
+  const players=lines.map((ln,i)=>{
+    const [num,pcn,pen,pos]=ln.split(",").map(s=>(s||"").trim());
+    return P(Number(num)||i+1, pcn||"", pen||"", (pos||"").toUpperCase()||"MF");
+  });
+  while(players.length<11) players.push(P(players.length+1,"","","MF"));
+  const id="C"+Date.now();
+  CUSTOM_TEAMS[id]={cn:cn||en, en:en||cn, colors:{home,away}, players};
+  saveCustom();
+  populateTeamSelects();
+  document.getElementById("home-team").value=state.home.teamId;
+  document.getElementById("away-team").value=state.away.teamId;
+  document.getElementById("team-modal").classList.add("hidden");
+  ["ct-name-cn","ct-name-en","ct-players"].forEach(idd=>document.getElementById(idd).value="");
+  alert("已保存：可在主/客队下拉中选择「"+(cn||en)+"」");
+}
+
+/* ----------------------------- 初始化 ---------------------------------- */
+function init(){
+  buildColorSwatches();
+  populateTeamSelects();
+  populateFormationSelects();
+  ["home","away"].forEach(s=>{ resetLineup(s); recomputeSide(s); });
+  wire();
+  Pitch.render(svg, state.pitch);
+  renderPieces();
+  piecesLayer.style.pointerEvents="auto";
+}
+init();
+
+/* 离线 PWA：仅在通过网址(http/https)打开时注册；本地文件打开会自动跳过 */
+if("serviceWorker" in navigator && location.protocol.startsWith("http")){
+  navigator.serviceWorker.register("sw.js").catch(()=>{});
+}
+</script>
+</body>
+</html>
