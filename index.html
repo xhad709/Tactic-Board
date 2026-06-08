@@ -561,7 +561,13 @@ function renderPieces(){
     const r = vw*0.014;
     const g = svgEl("g",{class:"piece",id:"ball-piece"});
     g.setAttribute("transform",`translate(${b.x} ${b.y})`);
-    g.appendChild(svgEl("circle",{r:r,fill:"#fff",stroke:"#111","stroke-width":r*0.18}));
+    g.appendChild(svgEl("circle",{r:r,fill:"#fff",stroke:"#111","stroke-width":r*0.12}));
+    // 中心黑色五边形（与主屏图标同款：外接半径为球半径的一半）
+    const rp=r*0.5; let pd="";
+    for(let k=0;k<5;k++){ const a=(-90+k*72)*Math.PI/180;
+      pd += (k===0?"M":"L")+` ${(rp*Math.cos(a)).toFixed(3)} ${(rp*Math.sin(a)).toFixed(3)}`; }
+    pd+=" Z";
+    g.appendChild(svgEl("path",{d:pd,fill:"#111"}));
     attachDrag(g,"ball",0);
     piecesLayer.appendChild(g);
   }
